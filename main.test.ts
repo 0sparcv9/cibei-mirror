@@ -41,10 +41,6 @@ const getTunnelSocket = async () => {
 
   socket.send(new Uint8Array(msg));
 
-  socket.addEventListener("message", ({ data }: MessageEvent) => {
-    console.log(new TextDecoder().decode(data));
-  }, { passive: true });
-
   return socket;
 };
 
@@ -85,6 +81,8 @@ async function tcp2ws(
 
         if (webSocket.readyState === WebSocket.OPEN) {
           try {
+            console.log("Websocket send");
+
             webSocket.send(value);
           } catch (error) {
             console.error(error);
@@ -113,29 +111,18 @@ async function tcp2ws(
       if (abortController.signal.aborted) return;
 
       try {
-        if (event.data instanceof ArrayBuffer) {
-          writer.write(new Uint8Array(event.data)).catch((error) => {
-            if (
-              !(error instanceof Deno.errors.BrokenPipe) &&
-              !(error instanceof Deno.errors.ConnectionReset)
-            ) {
-              console.error(error);
-            }
+        console.log("Writer write");
 
-            cleanup();
-          });
-        } else if (typeof event.data === "string") {
-          writer.write(new TextEncoder().encode(event.data)).catch((error) => {
-            if (
-              !(error instanceof Deno.errors.BrokenPipe) &&
-              !(error instanceof Deno.errors.ConnectionReset)
-            ) {
-              console.error(error);
-            }
+        writer.write(new Uint8Array(event.data)).catch((error) => {
+          if (
+            !(error instanceof Deno.errors.BrokenPipe) &&
+            !(error instanceof Deno.errors.ConnectionReset)
+          ) {
+            console.error(error);
+          }
 
-            cleanup();
-          });
-        }
+          cleanup();
+        });
       } catch (error) {
         console.error(error);
 
@@ -162,6 +149,7 @@ async function tcp2ws(
         console.error(error);
       }
     }),
+
     wsToTcp().catch((error) => {
       if (!(error instanceof Deno.errors.BadResource)) {
         console.error(error);
@@ -174,7 +162,6 @@ const listener = Deno.listen({ port: 1080, hostname: "0.0.0.0" });
 const abortController = new AbortController();
 
 socket.addEventListener("close", () => {
-  console.log("WebSocket closed, aborting all connections");
   abortController.abort();
 });
 
