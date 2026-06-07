@@ -1,0 +1,11 @@
+{
+  "tasks": {
+    "dev": "deno run --watch --allow-net main.ts"
+  },
+  "imports": {
+    "@libs/xml": "jsr:@libs/xml@^7.0.4",
+    "@std/assert": "jsr:@std/assert@1",
+    "@std/xml": "jsr:@std/xml@^0.1.2",
+    "serialize-xml": "https://raw.githubusercontent.com/olaven/serialize-xml/v0.3.2/mod.ts"
+  }
+}

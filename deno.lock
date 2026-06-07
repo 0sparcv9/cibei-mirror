@@ -1,0 +1,47 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@libs/xml@^7.0.4": "7.0.4",
+    "jsr:@std/assert@1": "1.0.19",
+    "jsr:@std/internal@^1.0.12": "1.0.13",
+    "jsr:@std/xml@~0.1.2": "0.1.2",
+    "npm:@types/deno@^2.7.0": "2.7.0"
+  },
+  "jsr": {
+    "@libs/xml@7.0.4": {
+      "integrity": "eed219cf6258a0b28b60c094c89563a1cd63a023ac515517d6b74a99873d6c02"
+    },
+    "@std/assert@1.0.19": {
+      "integrity": "eaada96ee120cb980bc47e040f82814d786fe8162ecc53c91d8df60b8755991e",
+      "dependencies": [
+        "jsr:@std/internal"
+      ]
+    },
+    "@std/internal@1.0.13": {
+      "integrity": "2f9546691d4ac2d32859c82dff284aaeac980ddeca38430d07941e7e288725c0"
+    },
+    "@std/xml@0.1.2": {
+      "integrity": "a17a771548f10895b9a2a54b39b52e2e27e0617e0e05bb5919c04c87f89007f0"
+    }
+  },
+  "npm": {
+    "@types/deno@2.7.0": {
+      "integrity": "sha512-Y6fWcV8KpYeO3Lik/RiYnUxtr/LWqoeACciU0CA+dr1U/45tGgaX3HWQQAPCNN53raN4Rr4Fht4y6qsUH57fDA=="
+    }
+  },
+  "remote": {
+    "https://raw.githubusercontent.com/olaven/serialize-xml/v0.3.2/mod.ts": "eb29afa7c8a03e692086a58abb87047a91fa5e51841c4c757807a58eb04e0730"
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@libs/xml@^7.0.4",
+      "jsr:@std/assert@1",
+      "jsr:@std/xml@~0.1.2"
+    ],
+    "packageJson": {
+      "dependencies": [
+        "npm:@types/deno@^2.7.0"
+      ]
+    }
+  }
+}
