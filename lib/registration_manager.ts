@@ -16,7 +16,7 @@ const clients = new Proxy(new Map(), {
       }
 
       default: {
-        return Reflect.get(target, prop);
+        return Reflect.get(target, prop).bind(target);
       }
     }
   },

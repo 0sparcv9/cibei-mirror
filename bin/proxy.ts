@@ -1,5 +1,7 @@
 import config from "../lib/config_parser.ts";
 import clients from "../lib/registration_manager.ts";
+import initSocket from "../lib/tunnel.ts";
+
 const { mimic, tunnelRegisterEndpoint, tunnelUrl } = config.root.attributes;
 
 export async function handler(req: Request): Promise<Response> {
@@ -14,6 +16,16 @@ export async function handler(req: Request): Promise<Response> {
       "url": `${tunnelUrl}/${clients.register(buf)}`,
       "salt": Array.from(buf),
     });
+  }
+
+  const clientAuthMsg = clients.get(url.pathname.split(`${tunnelUrl}/`)[1]);
+
+  if (clientAuthMsg) {
+    const { socket, response } = Deno.upgradeWebSocket(req);
+
+    initSocket(socket, clientAuthMsg);
+
+    return response;
   }
 
   const { body } = await fetch(`${mimic}/${url.pathname}`);

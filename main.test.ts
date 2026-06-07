@@ -1,19 +1,10 @@
 import config from "./lib/config_parser.ts";
 
-const { tunnelRegisterEndpoint, publicKey, privateKey } =
-  config.root.attributes;
+const { tunnelRegisterEndpoint, privateKey } = config.root.attributes;
 
 const req = await fetch(`http://127.0.0.1:8000${tunnelRegisterEndpoint}`);
 
 const resp = await req.json();
-
-/*const pubKey = await crypto.subtle.importKey(
-  "raw",
-  new Uint8Array(JSON.parse(publicKey)),
-  "Ed25519",
-  false,
-  ["verify"],
-);*/
 
 const privKey = await crypto.subtle.importKey(
   "pkcs8",
@@ -33,4 +24,20 @@ const msg = Array.from(
   ),
 );
 
-console.log(msg);
+const tunnelUrl = `ws://127.0.0.1:8000${resp.url}`;
+
+console.log(`Connecting to ${tunnelUrl} with message`, msg);
+
+const socket = new WebSocket(tunnelUrl);
+
+socket.binaryType = "arraybuffer";
+
+await new Promise((e) => socket.addEventListener("open", e));
+
+socket.send(new Uint8Array(msg));
+
+socket.addEventListener("message", ({ data }: MessageEvent) => {
+  console.log(new TextDecoder().decode(data));
+}, { passive: true });
+
+await new Promise((e) => socket.addEventListener("close", e));
