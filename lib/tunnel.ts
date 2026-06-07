@@ -10,6 +10,12 @@ const pubKey = await crypto.subtle.importKey(
   ["verify"],
 );
 
+const handleForward = ({ data }: MessageEvent) => {
+  const packet = new Uint8Array(data);
+
+  console.log(packet);
+};
+
 const initTunnel = (socket: WebSocket, clientAuthMsg: Uint8Array) => {
   socket.addEventListener("message", async ({ data }) => {
     const signature = new Uint8Array(data);
@@ -21,9 +27,11 @@ const initTunnel = (socket: WebSocket, clientAuthMsg: Uint8Array) => {
       Buffer.from(clientAuthMsg),
     );
 
-    if (result) {
-      socket.send(new TextEncoder().encode("ok"));
+    if (!result) {
+      return socket.close();
     }
+
+    socket.addEventListener("message", handleForward);
   }, { passive: true, once: true });
 };
 
