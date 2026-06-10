@@ -18,7 +18,11 @@ export default class TCPSegmentEvent extends MessageEvent<Uint8Array> {
       while (true) {
         const { value, done } = await reader.read();
 
-        if (done) break;
+        if (done) {
+          target.dispatchEvent(new TCPSegmentEvent("close", {}));
+
+          break;
+        }
 
         target.dispatchEvent(new TCPSegmentEvent("segment", {
           data: value

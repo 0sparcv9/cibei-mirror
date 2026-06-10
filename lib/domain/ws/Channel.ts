@@ -3,10 +3,6 @@ import { StatefulWebSocket } from "./StatefulSocket.ts";
 const channelIds: Set<number> = new Set();
 
 export default class Channel extends EventTarget {
-  private readonly socket: StatefulWebSocket;
-
-  private autodetectChannelID: boolean = false;
-
   private socketId: number = 0;
 
   private initSocketId() {
@@ -25,44 +21,59 @@ export default class Channel extends EventTarget {
     return this.socketId;
   }
 
-  public setAutodetectChannelID() {
-    this.autodetectChannelID = true;
-    this.socketId = 0;
-  }
-
   public sendPacket(packet: Uint8Array) {
     this.socket.send(
       new Uint8Array([this.socketId, ...packet]),
     );
   }
 
+  public onPacketCallback?: (packet: Uint8Array) => void;
+
+  public onPacketListener({ data }: MessageEvent) {
+    const [socketId, ...packet] = new Uint8Array(data);
+
+    const buffer = new Uint8Array(packet);
+
+    if (new TextDecoder().decode(buffer) === "__close__") {
+      console.log("[Ladder] Closing Channel " + socketId);
+
+      this.dispatchEvent(new Event("close"));
+
+      return;
+    }
+
+    if (socketId === this.socketId && this.onPacketCallback) {
+      this.onPacketCallback(buffer);
+    }
+  }
+
   public onPacket(callback: (packet: Uint8Array) => void) {
-    this.socket.addEventListener("message", ({ data }) => {
-      const [socketId, ...packet] = new Uint8Array(data);
+    this.onPacketCallback = callback;
 
-      if (this.autodetectChannelID) {
-        this.autodetectChannelID = false;
-        this.socketId = socketId;
-      }
+    const listener = this.onPacketListener.bind(this);
 
-      if (socketId === this.socketId) {
-        callback(new Uint8Array(packet));
-      }
-    }, { passive: true });
+    this.socket.addEventListener("message",
+      listener,
+      { passive: true }
+    );
+
+    this.socket.addEventListener("close", () => {
+      this.socket.removeEventListener("message", listener);
+
+      console.log("Removed message listener on global socket close " + this.socketId);
+    }, { once: true });
+
+    this.addEventListener("close", () => {
+      this.socket.removeEventListener("message", listener);
+
+      console.log("Removed message listener on socket cleanup " + this.socketId);
+    }, { once: true });
   }
 
-  public onPacketMultiplex(callback: (packet: Uint8Array, socketId: number) => void) {
-    this.socket.addEventListener("message", ({ data }) => {
-      const [socketId, ...packet] = new Uint8Array(data);
-
-      callback(new Uint8Array(packet), socketId);
-    }, { passive: true });
-  }
-
-  constructor(socket: StatefulWebSocket) {
+  constructor(
+    private readonly socket: StatefulWebSocket
+  ) {
     super();
-
-    this.socket = socket;
 
     this.initSocketId();
   }

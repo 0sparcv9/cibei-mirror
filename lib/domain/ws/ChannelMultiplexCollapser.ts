@@ -3,40 +3,49 @@ import { StatefulWebSocket } from "./StatefulSocket.ts";
 export class SingleDestinationChannel {
   public onPacketCallback?: (socketId: number, packet: Uint8Array<ArrayBuffer>) => void = undefined;
 
-  private controller: ChannelMultiplexCollapser;
-
   onPacket(callback: (socketId: number, packet: Uint8Array) => void) {
     this.onPacketCallback = callback;
   }
 
   public sendPacket(socketId: number, packet: Uint8Array) {
-    this.controller.mainSocket.send(
+    this.controller.mainSocket!.send(
       new Uint8Array([socketId, ...packet]),
     );
   }
 
-  constructor(controller: ChannelMultiplexCollapser) {
-    this.controller = controller;
-  }
+  constructor(
+    private controller: ChannelMultiplexCollapser
+  ) { }
 }
 
 export class ChannelMultiplexCollapser extends EventTarget {
-  public readonly mainSocket: StatefulWebSocket;
   private readonly channels: SingleDestinationChannel[] = [];
 
-  constructor(socket: StatefulWebSocket) {
+  constructor(
+    public mainSocket?: StatefulWebSocket
+  ) {
     super();
 
-    this.mainSocket = socket;
-
-    this.mainSocket.addEventListener("message", ({ data }: MessageEvent) => {
+    const listener = ({ data }: MessageEvent) => {
       const [socketId, ...packet] = new Uint8Array(data);
 
       this.channels.forEach(channel => {
         if (channel?.onPacketCallback)
           channel.onPacketCallback(socketId, new Uint8Array(packet));
       })
-    })
+    };
+
+    if (!this.mainSocket) throw new Error("No main socket");
+
+    this.mainSocket.addEventListener("message", listener)
+
+    this.mainSocket.addEventListener("close", () => {
+      this.channels.length = 0;
+
+      this.mainSocket!.removeEventListener("message", listener);
+
+      delete this.mainSocket;
+    }, { once: true })
   }
 
   public createSubflow(): SingleDestinationChannel {
@@ -45,5 +54,9 @@ export class ChannelMultiplexCollapser extends EventTarget {
     this.channels.push(channel);
 
     return channel;
+  }
+
+  [Symbol.dispose]() {
+    this.channels.length = 0;
   }
 }

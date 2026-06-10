@@ -1,8 +1,7 @@
 import config from "../lib/config_parser.ts";
-import { StatefulWebSocket } from "./domain/ws/StatefulSocket.ts";
 import TCPSegmentEvent from "./domain/streams/SegmentEvent.ts";
-import Channel from "./domain/ws/Channel.ts";
 import {ChannelMultiplexCollapser} from "./domain/ws/ChannelMultiplexCollapser.ts";
+import DisposableMap from "./domain/context/DisposableMap.ts";
 
 const { publicKey } = config.root.attributes;
 
@@ -57,7 +56,7 @@ const exfiltrateTlsSni = (
   return null;
 };
 
-const initTunnel = (
+const initTunnel = async (
   collapser: ChannelMultiplexCollapser,
   socket: WebSocket,
   clientAuthMsg: Uint8Array
@@ -76,7 +75,7 @@ const initTunnel = (
       return socket.close();
     }
 
-    const serverConnections = new Map<number, Deno.TcpConn>();
+    using serverConnections = new DisposableMap<number, Deno.TcpConn>();
 
     const flow = collapser.createSubflow();
 
@@ -97,10 +96,20 @@ const initTunnel = (
             serverConnection
           );
 
+          const target = TCPSegmentEvent
+            .attach(serverConnection.readable);
+
           console.log("Connected to " + serverConnectionDomain);
 
-          TCPSegmentEvent.attach(serverConnection.readable)
-            .addEventListener("segment", (({ data }: TCPSegmentEvent) => {
+          target.addEventListener("close", () => {
+            console.log("Server connection closed");
+
+            serverConnections.delete(socketId);
+
+            flow.sendPacket(socketId, new TextEncoder().encode("__close__"))
+          }, { once: true });
+
+          target.addEventListener("segment", (({ data }: TCPSegmentEvent) => {
               if (socket.readyState === WebSocket.OPEN) {
                 console.log("TCP -> SOCKET");
 
@@ -131,6 +140,8 @@ const initTunnel = (
       await serverConnection!.write(new Uint8Array(packet));
     });
   }, { passive: true, once: true });
+
+  await new Promise(resolve => socket.addEventListener("close", resolve));
 };
 
 export default initTunnel;

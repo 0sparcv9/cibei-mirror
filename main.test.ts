@@ -56,6 +56,12 @@ console.log("Listening at 0.0.0.0:1080");
 for await (const clientConn of listener) {
   const channel = new Channel(socket as StatefulWebSocket);
 
+  channel.addEventListener("close", () => {
+    try {
+      clientConn.close();
+    } catch { 0 }
+  });
+
   console.log("Create new channel", channel);
 
   TCPSegmentEvent
