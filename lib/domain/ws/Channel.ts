@@ -76,5 +76,9 @@ export default class Channel extends EventTarget {
     super();
 
     this.initSocketId();
+
+    this.addEventListener("close", () => {
+      channelIds.delete(this.socketId);
+    }, { once: true });
   }
 }

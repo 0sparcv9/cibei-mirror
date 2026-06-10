@@ -45,6 +45,8 @@ export class ChannelMultiplexCollapser extends EventTarget {
       this.mainSocket!.removeEventListener("message", listener);
 
       delete this.mainSocket;
+
+      console.log("Clearing ChannelMultiplexCollapser");
     }, { once: true })
   }
 
@@ -58,5 +60,7 @@ export class ChannelMultiplexCollapser extends EventTarget {
 
   [Symbol.dispose]() {
     this.channels.length = 0;
+
+    console.log("ChannelMultiplexCollapser freed");
   }
 }

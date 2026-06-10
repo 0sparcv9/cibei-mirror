@@ -25,12 +25,14 @@ export async function handler(req: Request): Promise<Response> {
   if (clientAuthMsg) {
     const { socket, response } = Deno.upgradeWebSocket(req);
 
-    queueMicrotask(async () => {
+    queueMicrotask(() => {
       using collapser = new ChannelMultiplexCollapser(
         socket as StatefulWebSocket
       );
 
-      await initSocket(collapser, socket, clientAuthMsg);
+      initSocket(collapser, socket, clientAuthMsg)
+        .then(_ => console.log("Socket complete"))
+        .catch(e => console.error(e));
     });
 
     return response;

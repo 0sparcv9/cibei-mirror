@@ -139,9 +139,9 @@ const initTunnel = async (
 
       await serverConnection!.write(new Uint8Array(packet));
     });
-  }, { passive: true, once: true });
 
-  await new Promise(resolve => socket.addEventListener("close", resolve));
+    await new Promise(resolve => socket.addEventListener("close", resolve));
+  }, { passive: true, once: true });
 };
 
 export default initTunnel;

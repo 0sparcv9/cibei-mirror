@@ -79,6 +79,10 @@ for await (const clientConn of listener) {
   }) as EventListener)
 
   channel.onPacket(async packet => {
-    await clientConn.write(packet);
+    try {
+      await clientConn.write(packet);
+    } catch(e) {
+      console.error(e);
+    }
   });
 }

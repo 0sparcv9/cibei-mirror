@@ -15,6 +15,7 @@ export default class TCPSegmentEvent extends MessageEvent<Uint8Array> {
     const target = new EventTarget();
 
     queueMicrotask(async () => {
+      try {
       while (true) {
         const { value, done } = await reader.read();
 
@@ -27,6 +28,9 @@ export default class TCPSegmentEvent extends MessageEvent<Uint8Array> {
         target.dispatchEvent(new TCPSegmentEvent("segment", {
           data: value
         }))
+      }
+      } catch(e) {
+        console.error(e);
       }
 
       reader.releaseLock();
