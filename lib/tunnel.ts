@@ -1,4 +1,5 @@
 import config from "../lib/config_parser.ts";
+import {SocketState, StatefulWebSocket} from "./domain/ws/StatefulSocket.ts";
 
 const { publicKey } = config.root.attributes;
 
@@ -9,23 +10,6 @@ const pubKey = await crypto.subtle.importKey(
   false,
   ["verify"],
 );
-
-type StatefulWebSocket = WebSocket & {
-  state: SocketState;
-  serverConnection: Deno.TcpConn;
-};
-
-enum SocketState {
-  HttpConnect,
-  ExpectForwardData,
-  ExfiltrateTLSSni,
-  Forward,
-}
-
-/*
- * Stole this code from myself
- * https://codeberg.org/verybinary/waterfall/src/branch/main/src/wfconfig/protocol.rs#L101
- */
 
 const exfiltrateTlsSni = (
   packet: Uint8Array,
@@ -62,9 +46,7 @@ const exfiltrateTlsSni = (
       if (end <= packet.length && len > 0 && len < 256) {
         const decoder = new TextDecoder();
 
-        const sni = decoder.decode(packet.slice(start, end));
-
-        return sni;
+        return decoder.decode(packet.slice(start, end));
       }
     }
   }
@@ -72,16 +54,8 @@ const exfiltrateTlsSni = (
   return null;
 };
 
-const forwardTransparent = async (
-  socket: StatefulWebSocket,
-  packet: ArrayBuffer | Uint8Array,
-) => {
-  const data = packet instanceof Uint8Array ? packet : new Uint8Array(packet);
-
-  await socket.serverConnection.write(data);
-};
-
 const forwardTCPtoWebSocket = async (
+  socketId: number,
   tcpConn: Deno.Conn,
   webSocket: WebSocket,
 ) => {
@@ -102,7 +76,7 @@ const forwardTCPtoWebSocket = async (
       if (webSocket.readyState === WebSocket.OPEN) {
         console.log("TCP -> SOCKET");
 
-        webSocket.send(data);
+        webSocket.send(new Uint8Array([socketId, ...data]));
       } else {
         break;
       }
@@ -112,62 +86,65 @@ const forwardTCPtoWebSocket = async (
   } finally {
     try {
       tcpConn.close();
-
-      if (webSocket.readyState === WebSocket.OPEN) {
-        webSocket.close();
-      }
     } catch {
       0;
     }
   }
 };
 
+const sockets = new Map<number, Deno.TcpConn>();
+
 const handleForward = async (
   socket: StatefulWebSocket,
   { data }: MessageEvent,
 ) => {
-  const packet = new Uint8Array(data);
+  const [socketId, ...packet] = new Uint8Array(data);
 
-  if (socket.state === SocketState.ExpectForwardData) {
-    socket.state = SocketState.ExfiltrateTLSSni;
+  console.log("Socket id " + socketId + " message ", packet);
 
-    const serverConnectionDomain = exfiltrateTlsSni(packet);
+  if (!sockets.has(socketId)) {
+    const serverConnectionDomain = exfiltrateTlsSni(new Uint8Array(packet));
 
     if (serverConnectionDomain) {
-      socket.serverConnection = await Deno.connect({
+      const serverConnection = await Deno.connect({
         hostname: serverConnectionDomain,
         port: 443,
       });
 
-      console.log("Connected to " + serverConnectionDomain);
-
-      await forwardTransparent(socket, packet);
-
-      queueMicrotask(() =>
-        forwardTCPtoWebSocket(socket.serverConnection, socket)
+      sockets.set(
+          socketId,
+          serverConnection
       );
 
-      console.log("Working");
+      queueMicrotask(() =>
+          forwardTCPtoWebSocket(socketId, serverConnection, socket)
+      );
 
-      socket.addEventListener("message", async ({ data }) => {
-        await forwardTransparent(socket, data);
-      });
+      socket.state = SocketState.Forward;
     }
   }
 
-  const text = new TextDecoder().decode(packet);
+  const text = new TextDecoder().decode(new Uint8Array(packet));
 
-  /*
-   * HTTP Connect
-   */
+  console.log("Socket id: " + socketId, text)
 
   if (text.includes("CONNECT")) {
     const response = "HTTP/1.1 200 Connection Established\r\n\r\n";
 
-    socket.send(new TextEncoder().encode(response));
+    const encoded = new TextEncoder().encode(response);
+
+    socket.send(new Uint8Array([socketId, ...encoded]));
 
     socket.state = SocketState.ExpectForwardData;
+
+    return
   }
+
+  const serverConnection = sockets.get(socketId);
+
+  if (!serverConnection) throw new Error("Broken socket state");
+
+  await serverConnection.write(new Uint8Array(packet));
 };
 
 const initTunnel = (socket: WebSocket, clientAuthMsg: Uint8Array) => {

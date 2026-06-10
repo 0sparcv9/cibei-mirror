@@ -46,139 +46,66 @@ const getTunnelSocket = async () => {
 
 const socket = await getTunnelSocket();
 
-/**
- * Expose a transparent proxy
- */
-
 async function tcp2ws(
+  socketId: number,
   tcpConn: Deno.TcpConn,
   webSocket: WebSocket,
-  signal: AbortSignal,
 ) {
-  const abortController = new AbortController();
+  const reader = tcpConn.readable.getReader();
 
-  const cleanup = () => {
-    abortController.abort();
-    try {
-      tcpConn.close();
-    } catch {
-      0;
-    }
-  };
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
 
-  signal.addEventListener("abort", cleanup);
+      if (done) break;
 
-  const tcpToWs = async () => {
-    const reader = tcpConn.readable.getReader();
+      if (webSocket.readyState === WebSocket.OPEN) {
+        try {
+          const packet = new Uint8Array([socketId, ...value]);
 
-    try {
-      while (true) {
-        if (abortController.signal.aborted) break;
+          console.log("Websocket send: ", packet);
 
-        const { value, done } = await reader.read();
+          webSocket.send(packet);
+        } catch (error) {
+          console.error(error);
 
-        if (done) break;
-
-        if (webSocket.readyState === WebSocket.OPEN) {
-          try {
-            console.log("Websocket send");
-
-            webSocket.send(value);
-          } catch (error) {
-            console.error(error);
-
-            break;
-          }
-        } else {
           break;
         }
+      } else {
+        break;
       }
-    } catch (error) {
-      if (!(error instanceof Deno.errors.BadResource)) {
-        console.error(error);
-      }
-    } finally {
-      reader.releaseLock();
-
-      cleanup();
     }
-  };
-
-  const wsToTcp = async () => {
-    const writer = tcpConn.writable.getWriter();
-
-    const messageHandler = (event: MessageEvent) => {
-      if (abortController.signal.aborted) return;
-
-      try {
-        console.log("Writer write");
-
-        writer.write(new Uint8Array(event.data)).catch((error) => {
-          if (
-            !(error instanceof Deno.errors.BrokenPipe) &&
-            !(error instanceof Deno.errors.ConnectionReset)
-          ) {
-            console.error(error);
-          }
-
-          cleanup();
-        });
-      } catch (error) {
-        console.error(error);
-
-        cleanup();
-      }
-    };
-
-    webSocket.addEventListener("message", messageHandler);
-    webSocket.addEventListener("close", cleanup);
-    webSocket.addEventListener("error", cleanup);
-
-    await new Promise((resolve) =>
-      abortController.signal.addEventListener("abort", resolve)
-    );
-
-    webSocket.removeEventListener("message", messageHandler);
-
-    await writer.close().catch(() => {});
-  };
-
-  await Promise.race([
-    tcpToWs().catch((error) => {
-      if (!(error instanceof Deno.errors.BadResource)) {
-        console.error(error);
-      }
-    }),
-
-    wsToTcp().catch((error) => {
-      if (!(error instanceof Deno.errors.BadResource)) {
-        console.error(error);
-      }
-    }),
-  ]);
+  } catch (error) {
+    if (!(error instanceof Deno.errors.BadResource)) {
+      console.error(error);
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }
 
-const listener = Deno.listen({ port: 1080, hostname: "0.0.0.0" });
-const abortController = new AbortController();
+socket.addEventListener("message", ({ data }) => {
+  const [socketId, ...packetData] = new Uint8Array(data);
 
-socket.addEventListener("close", () => {
-  abortController.abort();
-});
+  const connection = clientConnections.get(socketId);
+
+  if (connection) {
+    connection.write(new Uint8Array(packetData));
+  }
+})
+
+const listener = Deno.listen({ port: 1080, hostname: "0.0.0.0" });
 
 console.log("Listening at 0.0.0.0:1080");
 
+const clientConnections = new Map<number, Deno.TcpConn>();
+
 for await (const clientConn of listener) {
-  if (abortController.signal.aborted) {
-    break;
-  }
+  const socketId = clientConnections.size;
 
-  const clientAbortController = new AbortController();
+  clientConnections.set(socketId, clientConn);
 
-  abortController.signal.addEventListener("abort", () => {
-    clientAbortController.abort();
-  });
-
-  tcp2ws(clientConn, socket, clientAbortController.signal).catch((error) => {
+  queueMicrotask(() => tcp2ws(socketId, clientConn, socket).catch((error) => {
     if (
       error instanceof Deno.errors.BadResource ||
       error instanceof Deno.errors.BrokenPipe ||
@@ -188,5 +115,5 @@ for await (const clientConn of listener) {
     }
 
     console.error(error);
-  });
+  }));
 }
