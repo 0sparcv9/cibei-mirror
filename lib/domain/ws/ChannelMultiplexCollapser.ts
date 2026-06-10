@@ -1,5 +1,9 @@
 import { StatefulWebSocket } from "./StatefulSocket.ts";
 
+export enum ControlMessage {
+  Close
+}
+
 export class SingleDestinationChannel {
   public onPacketCallback?: (socketId: number, packet: Uint8Array<ArrayBuffer>) => void = undefined;
 
@@ -10,6 +14,14 @@ export class SingleDestinationChannel {
   public sendPacket(socketId: number, packet: Uint8Array) {
     this.controller.mainSocket!.send(
       new Uint8Array([socketId, ...packet]),
+    );
+  }
+
+  public sendControlMessage(socketId: number, message: ControlMessage) {
+    console.log("Sending control Message " + message + " to " + socketId);
+
+    this.controller.mainSocket!.send(
+      new Uint8Array([0, socketId, message]),
     );
   }
 

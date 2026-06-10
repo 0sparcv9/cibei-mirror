@@ -1,20 +1,38 @@
 import { StatefulWebSocket } from "./StatefulSocket.ts";
 
-const channelIds: Set<number> = new Set();
+const channels: Map<number, Channel> = new Map();
+
+addEventListener("Channel::close", ((event: MessageEvent) => {
+  console.log("Channel " + event.data + " got close control message");
+
+  if (channels.has(event.data)) {
+    const channel = channels.get(event.data)!;
+
+    channel.dispatchEvent(new Event("close"));
+  }
+}) as EventListener)
 
 export default class Channel extends EventTarget {
   private socketId: number = 0;
+
+  public setSocketId(id: number) {
+    channels.delete(this.socketId);
+
+    this.socketId = id;
+
+    channels.set(id, this);
+  }
 
   private initSocketId() {
     let socketId;
 
     do {
       socketId = Math.floor(Math.random() * 255);
-    } while (channelIds.has(socketId));
+    } while (channels.has(socketId));
 
     this.socketId = socketId;
 
-    channelIds.add(socketId);
+    channels.set(socketId, this);
   }
 
   public getSocketID() {
@@ -34,14 +52,6 @@ export default class Channel extends EventTarget {
 
     const buffer = new Uint8Array(packet);
 
-    if (new TextDecoder().decode(buffer) === "__close__") {
-      console.log("[Ladder] Closing Channel " + socketId);
-
-      this.dispatchEvent(new Event("close"));
-
-      return;
-    }
-
     if (socketId === this.socketId && this.onPacketCallback) {
       this.onPacketCallback(buffer);
     }
@@ -60,11 +70,15 @@ export default class Channel extends EventTarget {
     this.socket.addEventListener("close", () => {
       this.socket.removeEventListener("message", listener);
 
+      channels.delete(this.socketId);
+
       console.log("Removed message listener on global socket close " + this.socketId);
     }, { once: true });
 
     this.addEventListener("close", () => {
       this.socket.removeEventListener("message", listener);
+
+      channels.delete(this.socketId);
 
       console.log("Removed message listener on socket cleanup " + this.socketId);
     }, { once: true });
@@ -76,9 +90,5 @@ export default class Channel extends EventTarget {
     super();
 
     this.initSocketId();
-
-    this.addEventListener("close", () => {
-      channelIds.delete(this.socketId);
-    }, { once: true });
   }
 }

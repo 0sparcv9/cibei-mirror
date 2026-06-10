@@ -1,6 +1,6 @@
 import config from "../lib/config_parser.ts";
 import TCPSegmentEvent from "./domain/streams/SegmentEvent.ts";
-import {ChannelMultiplexCollapser} from "./domain/ws/ChannelMultiplexCollapser.ts";
+import {ChannelMultiplexCollapser, ControlMessage} from "./domain/ws/ChannelMultiplexCollapser.ts";
 import DisposableMap from "./domain/context/DisposableMap.ts";
 
 const { publicKey } = config.root.attributes;
@@ -56,7 +56,7 @@ const exfiltrateTlsSni = (
   return null;
 };
 
-const initTunnel = async (
+const initTunnel = (
   collapser: ChannelMultiplexCollapser,
   socket: WebSocket,
   clientAuthMsg: Uint8Array
@@ -106,7 +106,7 @@ const initTunnel = async (
 
             serverConnections.delete(socketId);
 
-            flow.sendPacket(socketId, new TextEncoder().encode("__close__"))
+            flow.sendControlMessage(socketId, ControlMessage.Close);
           }, { once: true });
 
           target.addEventListener("segment", (({ data }: TCPSegmentEvent) => {
@@ -138,7 +138,7 @@ const initTunnel = async (
       }
 
       if (text.includes("GET")) {
-        flow.sendPacket(socketId, new TextEncoder().encode("__close__"));
+        flow.sendControlMessage(socketId, ControlMessage.Close);
 
         return;
       }

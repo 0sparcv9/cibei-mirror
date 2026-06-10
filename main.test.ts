@@ -2,6 +2,7 @@ import config from "./lib/config_parser.ts";
 import TCPSegmentEvent from "./lib/domain/streams/SegmentEvent.ts";
 import Channel from "./lib/domain/ws/Channel.ts";
 import {StatefulWebSocket} from "./lib/domain/ws/StatefulSocket.ts";
+import {ControlMessage} from "./lib/domain/ws/ChannelMultiplexCollapser.ts";
 
 const { tunnelRegisterEndpoint, privateKey } = config.root.attributes;
 
@@ -52,6 +53,28 @@ const socket = await getTunnelSocket();
 const listener = Deno.listen({ port: 1080, hostname: "0.0.0.0" });
 
 console.log("Listening at 0.0.0.0:1080");
+
+const controlChannel = new Channel(socket as StatefulWebSocket);
+
+controlChannel.setSocketId(0);
+
+controlChannel.onPacket((packet) => {
+  const [socketId, message] = packet;
+
+  if (socketId > 0) {
+    console.log("Received control message", message);
+
+    switch (message) {
+      case ControlMessage.Close: {
+        dispatchEvent(new MessageEvent("Channel::close", {
+          data: socketId
+        }));
+
+        break;
+      }
+    }
+  }
+})
 
 for await (const clientConn of listener) {
   const channel = new Channel(socket as StatefulWebSocket);

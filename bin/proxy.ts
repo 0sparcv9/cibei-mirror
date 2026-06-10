@@ -30,9 +30,11 @@ export async function handler(req: Request): Promise<Response> {
         socket as StatefulWebSocket
       );
 
-      initSocket(collapser, socket, clientAuthMsg)
-        .then(_ => console.log("Socket complete"))
-        .catch(e => console.error(e));
+      try {
+        initSocket(collapser, socket, clientAuthMsg);
+      } catch(e) {
+        console.error(e);
+      }
     });
 
     return response;
