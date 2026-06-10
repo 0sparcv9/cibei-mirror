@@ -137,7 +137,17 @@ const initTunnel = async (
         return;
       }
 
-      await serverConnection!.write(new Uint8Array(packet));
+      if (text.includes("GET")) {
+        flow.sendPacket(socketId, new TextEncoder().encode("__close__"));
+
+        return;
+      }
+
+      if (serverConnection) {
+        return await serverConnection!.write(new Uint8Array(packet));
+      }
+
+      console.warn("Unrecognized proxy protocol!!!");
     });
 
     await new Promise(resolve => socket.addEventListener("close", resolve));
