@@ -2,6 +2,7 @@ import config from "../lib/config_parser.ts";
 import { StatefulWebSocket } from "./domain/ws/StatefulSocket.ts";
 import TCPSegmentEvent from "./domain/streams/SegmentEvent.ts";
 import Channel from "./domain/ws/Channel.ts";
+import {ChannelMultiplexCollapser} from "./domain/ws/ChannelMultiplexCollapser.ts";
 
 const { publicKey } = config.root.attributes;
 
@@ -56,7 +57,11 @@ const exfiltrateTlsSni = (
   return null;
 };
 
-const initTunnel = (socket: WebSocket, clientAuthMsg: Uint8Array) => {
+const initTunnel = (
+  collapser: ChannelMultiplexCollapser,
+  socket: WebSocket,
+  clientAuthMsg: Uint8Array
+) => {
   socket.addEventListener("message", async ({ data }) => {
     const signature = new Uint8Array(data);
 
@@ -71,25 +76,26 @@ const initTunnel = (socket: WebSocket, clientAuthMsg: Uint8Array) => {
       return socket.close();
     }
 
-    let serverConnection: Deno.TcpConn | undefined;
+    const serverConnections = new Map<number, Deno.TcpConn>();
 
-    const channel = new Channel(socket as StatefulWebSocket);
+    const flow = collapser.createSubflow();
 
-    channel.setAutodetectChannelID();
-
-    channel.onPacket(async (packet) => {
-      const socketId = channel.getSocketID();
-
+    flow.onPacket(async (socketId: number, packet: Uint8Array) => {
       console.log("Socket id "  + socketId, "packet", packet);
 
-      if (!serverConnection) {
+      if (!serverConnections.has(socketId)) {
         const serverConnectionDomain = exfiltrateTlsSni(new Uint8Array(packet));
 
         if (serverConnectionDomain) {
-          serverConnection = await Deno.connect({
+          const serverConnection = await Deno.connect({
             hostname: serverConnectionDomain,
             port: 443
           });
+
+          serverConnections.set(
+            socketId,
+            serverConnection
+          );
 
           console.log("Connected to " + serverConnectionDomain);
 
@@ -98,11 +104,15 @@ const initTunnel = (socket: WebSocket, clientAuthMsg: Uint8Array) => {
               if (socket.readyState === WebSocket.OPEN) {
                 console.log("TCP -> SOCKET");
 
-                socket.send(new Uint8Array([socketId, ...data]));
+                flow.sendPacket(socketId, data);
               }
             }) as EventListener);
         }
       }
+
+      const serverConnection = serverConnections.get(
+        socketId
+      );
 
       const text = new TextDecoder().decode(new Uint8Array(packet));
 
@@ -113,7 +123,7 @@ const initTunnel = (socket: WebSocket, clientAuthMsg: Uint8Array) => {
 
         const encoded = new TextEncoder().encode(response);
 
-        socket.send(new Uint8Array([socketId, ...encoded]));
+        flow.sendPacket(socketId, encoded);
 
         return;
       }

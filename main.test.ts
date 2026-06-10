@@ -56,11 +56,15 @@ console.log("Listening at 0.0.0.0:1080");
 for await (const clientConn of listener) {
   const channel = new Channel(socket as StatefulWebSocket);
 
+  console.log("Create new channel", channel);
+
   TCPSegmentEvent
     .attach(clientConn.readable)
     .addEventListener("segment", (({ data }: TCPSegmentEvent) => {
       if (socket.readyState === WebSocket.OPEN) {
         try {
+          console.log("Send ", data, "Socket ID " + channel.getSocketID());
+
           channel.sendPacket(data);
         } catch (error) {
           console.error(error)

@@ -12,11 +12,13 @@ export default class Channel extends EventTarget {
   private initSocketId() {
     let socketId;
 
-    while (!channelIds.has(socketId = Math.floor(Math.random() * 255))) {
-      this.socketId = socketId;
+    do {
+      socketId = Math.floor(Math.random() * 255);
+    } while (channelIds.has(socketId));
 
-      channelIds.add(socketId);
-    }
+    this.socketId = socketId;
+
+    channelIds.add(socketId);
   }
 
   public getSocketID() {
@@ -46,6 +48,14 @@ export default class Channel extends EventTarget {
       if (socketId === this.socketId) {
         callback(new Uint8Array(packet));
       }
+    }, { passive: true });
+  }
+
+  public onPacketMultiplex(callback: (packet: Uint8Array, socketId: number) => void) {
+    this.socket.addEventListener("message", ({ data }) => {
+      const [socketId, ...packet] = new Uint8Array(data);
+
+      callback(new Uint8Array(packet), socketId);
     }, { passive: true });
   }
 
