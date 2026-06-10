@@ -5,6 +5,8 @@ const channelIds: Set<number> = new Set();
 export default class Channel extends EventTarget {
   private readonly socket: StatefulWebSocket;
 
+  private autodetectChannelID: boolean = false;
+
   private socketId: number = 0;
 
   private initSocketId() {
@@ -17,10 +19,34 @@ export default class Channel extends EventTarget {
     }
   }
 
-  private sendMessage(packet: Uint8Array) {
+  public getSocketID() {
+    return this.socketId;
+  }
+
+  public setAutodetectChannelID() {
+    this.autodetectChannelID = true;
+    this.socketId = 0;
+  }
+
+  public sendPacket(packet: Uint8Array) {
     this.socket.send(
       new Uint8Array([this.socketId, ...packet]),
     );
+  }
+
+  public onPacket(callback: (packet: Uint8Array) => void) {
+    this.socket.addEventListener("message", ({ data }) => {
+      const [socketId, ...packet] = new Uint8Array(data);
+
+      if (this.autodetectChannelID) {
+        this.autodetectChannelID = false;
+        this.socketId = socketId;
+      }
+
+      if (socketId === this.socketId) {
+        callback(new Uint8Array(packet));
+      }
+    }, { passive: true });
   }
 
   constructor(socket: StatefulWebSocket) {

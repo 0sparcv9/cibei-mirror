@@ -1,6 +1,7 @@
 import config from "../lib/config_parser.ts";
-import {SocketState, StatefulWebSocket} from "./domain/ws/StatefulSocket.ts";
+import { StatefulWebSocket } from "./domain/ws/StatefulSocket.ts";
 import TCPSegmentEvent from "./domain/streams/SegmentEvent.ts";
+import Channel from "./domain/ws/Channel.ts";
 
 const { publicKey } = config.root.attributes;
 
@@ -55,66 +56,6 @@ const exfiltrateTlsSni = (
   return null;
 };
 
-const sockets = new Map<number, Deno.TcpConn>();
-
-const handleForward = async (
-  socket: StatefulWebSocket,
-  { data }: MessageEvent,
-) => {
-  const [socketId, ...packet] = new Uint8Array(data);
-
-  console.log("Socket id " + socketId + " message ", packet);
-
-  if (!sockets.has(socketId)) {
-    const serverConnectionDomain = exfiltrateTlsSni(new Uint8Array(packet));
-
-    if (serverConnectionDomain) {
-      const serverConnection = await Deno.connect({
-        hostname: serverConnectionDomain,
-        port: 443,
-      });
-
-      sockets.set(
-          socketId,
-          serverConnection
-      );
-
-      TCPSegmentEvent.attach(serverConnection.readable)
-        .addEventListener("segment", (({ data }: TCPSegmentEvent) => {
-          if (socket.readyState === WebSocket.OPEN) {
-            console.log("TCP -> SOCKET");
-
-            socket.send(new Uint8Array([socketId, ...data]));
-          }
-        }) as EventListener)
-
-      socket.state = SocketState.Forward;
-    }
-  }
-
-  const text = new TextDecoder().decode(new Uint8Array(packet));
-
-  console.log("Socket id: " + socketId, text)
-
-  if (text.includes("CONNECT")) {
-    const response = "HTTP/1.1 200 Connection Established\r\n\r\n";
-
-    const encoded = new TextEncoder().encode(response);
-
-    socket.send(new Uint8Array([socketId, ...encoded]));
-
-    socket.state = SocketState.ExpectForwardData;
-
-    return
-  }
-
-  const serverConnection = sockets.get(socketId);
-
-  if (!serverConnection) throw new Error("Broken socket state");
-
-  await serverConnection.write(new Uint8Array(packet));
-};
-
 const initTunnel = (socket: WebSocket, clientAuthMsg: Uint8Array) => {
   socket.addEventListener("message", async ({ data }) => {
     const signature = new Uint8Array(data);
@@ -130,14 +71,55 @@ const initTunnel = (socket: WebSocket, clientAuthMsg: Uint8Array) => {
       return socket.close();
     }
 
-    socket.addEventListener(
-      "message",
-      (event) =>
-        handleForward(
-          socket as StatefulWebSocket,
-          event,
-        ),
-    );
+    let serverConnection: Deno.TcpConn | undefined;
+
+    const channel = new Channel(socket as StatefulWebSocket);
+
+    channel.setAutodetectChannelID();
+
+    channel.onPacket(async (packet) => {
+      const socketId = channel.getSocketID();
+
+      console.log("Socket id "  + socketId, "packet", packet);
+
+      if (!serverConnection) {
+        const serverConnectionDomain = exfiltrateTlsSni(new Uint8Array(packet));
+
+        if (serverConnectionDomain) {
+          serverConnection = await Deno.connect({
+            hostname: serverConnectionDomain,
+            port: 443
+          });
+
+          console.log("Connected to " + serverConnectionDomain);
+
+          TCPSegmentEvent.attach(serverConnection.readable)
+            .addEventListener("segment", (({ data }: TCPSegmentEvent) => {
+              if (socket.readyState === WebSocket.OPEN) {
+                console.log("TCP -> SOCKET");
+
+                socket.send(new Uint8Array([socketId, ...data]));
+              }
+            }) as EventListener);
+        }
+      }
+
+      const text = new TextDecoder().decode(new Uint8Array(packet));
+
+      console.log(text);
+
+      if (text.includes("CONNECT")) {
+        const response = "HTTP/1.1 200 Connection Established\r\n\r\n";
+
+        const encoded = new TextEncoder().encode(response);
+
+        socket.send(new Uint8Array([socketId, ...encoded]));
+
+        return;
+      }
+
+      await serverConnection!.write(new Uint8Array(packet));
+    });
   }, { passive: true, once: true });
 };
 

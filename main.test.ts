@@ -1,5 +1,7 @@
 import config from "./lib/config_parser.ts";
 import TCPSegmentEvent from "./lib/domain/streams/SegmentEvent.ts";
+import Channel from "./lib/domain/ws/Channel.ts";
+import {StatefulWebSocket} from "./lib/domain/ws/StatefulSocket.ts";
 
 const { tunnelRegisterEndpoint, privateKey } = config.root.attributes;
 
@@ -47,40 +49,26 @@ const getTunnelSocket = async () => {
 
 const socket = await getTunnelSocket();
 
-socket.addEventListener("message", ({ data }) => {
-  const [socketId, ...packetData] = new Uint8Array(data);
-
-  const connection = clientConnections.get(socketId);
-
-  if (connection) {
-    connection.write(new Uint8Array(packetData));
-  }
-})
-
 const listener = Deno.listen({ port: 1080, hostname: "0.0.0.0" });
 
 console.log("Listening at 0.0.0.0:1080");
 
-const clientConnections = new Map<number, Deno.TcpConn>();
-
 for await (const clientConn of listener) {
-  const socketId = clientConnections.size;
-
-  clientConnections.set(socketId, clientConn);
+  const channel = new Channel(socket as StatefulWebSocket);
 
   TCPSegmentEvent
     .attach(clientConn.readable)
     .addEventListener("segment", (({ data }: TCPSegmentEvent) => {
       if (socket.readyState === WebSocket.OPEN) {
         try {
-          const packet = new Uint8Array([socketId, ...data]);
-
-          console.log("Websocket send: ", packet);
-
-          socket.send(packet);
+          channel.sendPacket(data);
         } catch (error) {
           console.error(error)
         }
       }
   }) as EventListener)
+
+  channel.onPacket(async packet => {
+    await clientConn.write(packet);
+  });
 }
