@@ -1,4 +1,5 @@
 import config from "./lib/config_parser.ts";
+import TCPSegmentEvent from "./lib/domain/streams/SegmentEvent.ts";
 
 const { tunnelRegisterEndpoint, privateKey } = config.root.attributes;
 
@@ -46,44 +47,6 @@ const getTunnelSocket = async () => {
 
 const socket = await getTunnelSocket();
 
-async function tcp2ws(
-  socketId: number,
-  tcpConn: Deno.TcpConn,
-  webSocket: WebSocket,
-) {
-  const reader = tcpConn.readable.getReader();
-
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-
-      if (done) break;
-
-      if (webSocket.readyState === WebSocket.OPEN) {
-        try {
-          const packet = new Uint8Array([socketId, ...value]);
-
-          console.log("Websocket send: ", packet);
-
-          webSocket.send(packet);
-        } catch (error) {
-          console.error(error);
-
-          break;
-        }
-      } else {
-        break;
-      }
-    }
-  } catch (error) {
-    if (!(error instanceof Deno.errors.BadResource)) {
-      console.error(error);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-}
-
 socket.addEventListener("message", ({ data }) => {
   const [socketId, ...packetData] = new Uint8Array(data);
 
@@ -105,15 +68,19 @@ for await (const clientConn of listener) {
 
   clientConnections.set(socketId, clientConn);
 
-  queueMicrotask(() => tcp2ws(socketId, clientConn, socket).catch((error) => {
-    if (
-      error instanceof Deno.errors.BadResource ||
-      error instanceof Deno.errors.BrokenPipe ||
-      error instanceof Deno.errors.ConnectionReset
-    ) {
-      return;
-    }
+  TCPSegmentEvent
+    .attach(clientConn.readable)
+    .addEventListener("segment", (({ data }: TCPSegmentEvent) => {
+      if (socket.readyState === WebSocket.OPEN) {
+        try {
+          const packet = new Uint8Array([socketId, ...data]);
 
-    console.error(error);
-  }));
+          console.log("Websocket send: ", packet);
+
+          socket.send(packet);
+        } catch (error) {
+          console.error(error)
+        }
+      }
+  }) as EventListener)
 }

@@ -2,11 +2,6 @@ import { StatefulWebSocket } from "./StatefulSocket.ts";
 
 const channelIds: Set<number> = new Set();
 
-enum ControlTypes {
-  SocketData,
-  SocketClose
-}
-
 export default class Channel extends EventTarget {
   private readonly socket: StatefulWebSocket;
 

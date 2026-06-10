@@ -1,5 +1,6 @@
 import config from "../lib/config_parser.ts";
 import {SocketState, StatefulWebSocket} from "./domain/ws/StatefulSocket.ts";
+import TCPSegmentEvent from "./domain/streams/SegmentEvent.ts";
 
 const { publicKey } = config.root.attributes;
 
@@ -54,44 +55,6 @@ const exfiltrateTlsSni = (
   return null;
 };
 
-const forwardTCPtoWebSocket = async (
-  socketId: number,
-  tcpConn: Deno.Conn,
-  webSocket: WebSocket,
-) => {
-  try {
-    const buffer = new Uint8Array(1024);
-
-    while (true) {
-      const bytesRead = await tcpConn.read(buffer);
-
-      console.log("Read " + bytesRead + " bytes");
-
-      if (bytesRead === null) {
-        break;
-      }
-
-      const data = buffer.slice(0, bytesRead);
-
-      if (webSocket.readyState === WebSocket.OPEN) {
-        console.log("TCP -> SOCKET");
-
-        webSocket.send(new Uint8Array([socketId, ...data]));
-      } else {
-        break;
-      }
-    }
-  } catch {
-    0;
-  } finally {
-    try {
-      tcpConn.close();
-    } catch {
-      0;
-    }
-  }
-};
-
 const sockets = new Map<number, Deno.TcpConn>();
 
 const handleForward = async (
@@ -116,9 +79,14 @@ const handleForward = async (
           serverConnection
       );
 
-      queueMicrotask(() =>
-          forwardTCPtoWebSocket(socketId, serverConnection, socket)
-      );
+      TCPSegmentEvent.attach(serverConnection.readable)
+        .addEventListener("segment", (({ data }: TCPSegmentEvent) => {
+          if (socket.readyState === WebSocket.OPEN) {
+            console.log("TCP -> SOCKET");
+
+            socket.send(new Uint8Array([socketId, ...data]));
+          }
+        }) as EventListener)
 
       socket.state = SocketState.Forward;
     }
