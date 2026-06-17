@@ -1,8 +1,12 @@
 import config from "../lib/config_parser.ts";
 import TCPSegmentEvent from "./domain/streams/SegmentEvent.ts";
-import {ChannelMultiplexCollapser, ControlMessage} from "./domain/ws/ChannelMultiplexCollapser.ts";
+import {
+  ChannelMultiplexCollapser,
+  ControlMessage,
+} from "./domain/ws/ChannelMultiplexCollapser.ts";
 import DisposableMap from "./domain/context/DisposableMap.ts";
 import ClientHelloUtils from "./domain/tls/ClientHelloUtils.ts";
+import { Xor } from "./domain/obfuscation/Xor.ts";
 
 const { publicKey } = config.root.attributes;
 
@@ -17,10 +21,13 @@ const pubKey = await crypto.subtle.importKey(
 const initTunnel = (
   collapser: ChannelMultiplexCollapser,
   socket: WebSocket,
-  clientAuthMsg: Uint8Array
+  clientAuthMsg: Uint8Array,
 ) => {
   socket.addEventListener("message", async ({ data }) => {
-    const signature = new Uint8Array(data);
+    const bytesCopy =
+      (data instanceof ArrayBuffer ? new Uint8Array(data) : data).slice();
+
+    const signature = Xor.apply(bytesCopy);
 
     const result = await crypto.subtle.verify(
       "Ed25519",
@@ -38,20 +45,22 @@ const initTunnel = (
     const flow = collapser.createSubflow();
 
     flow.onPacket(async (socketId: number, packet: Uint8Array) => {
-      console.log("Socket id "  + socketId, "packet", packet);
+      console.log("Socket id " + socketId, "packet", packet);
 
       if (!serverConnections.has(socketId)) {
-        const serverConnectionDomain = ClientHelloUtils.exfiltrateTlsSni(new Uint8Array(packet));
+        const serverConnectionDomain = ClientHelloUtils.exfiltrateTlsSni(
+          new Uint8Array(packet),
+        );
 
         if (serverConnectionDomain) {
           const serverConnection = await Deno.connect({
             hostname: serverConnectionDomain,
-            port: 443
+            port: 443,
           });
 
           serverConnections.set(
             socketId,
-            serverConnection
+            serverConnection,
           );
 
           const target = TCPSegmentEvent
@@ -67,25 +76,25 @@ const initTunnel = (
             flow.sendControlMessage(socketId, ControlMessage.Close);
           }, { once: true });
 
-          target.addEventListener("segment", (({ data }: TCPSegmentEvent) => {
-              if (socket.readyState === WebSocket.OPEN) {
-                console.log("TCP -> SOCKET");
+          target.addEventListener(
+            "segment",
+            (({ data }: TCPSegmentEvent) => {
+              console.log("TCP -> SOCKET");
 
-                flow.sendPacket(socketId, data);
-              }
-            }) as EventListener);
+              flow.sendPacket(socketId, data);
+            }) as EventListener,
+          );
         }
       }
 
       const serverConnection = serverConnections.get(
-        socketId
+        socketId,
       );
 
       const text = new TextDecoder().decode(new Uint8Array(packet));
 
-      console.log(text);
-
       if (text.includes("CONNECT")) {
+        console.log("connect");
         const response = "HTTP/1.1 200 Connection Established\r\n\r\n";
 
         const encoded = new TextEncoder().encode(response);
@@ -108,7 +117,7 @@ const initTunnel = (
       console.warn("Unrecognized proxy protocol!!!");
     });
 
-    await new Promise(resolve => socket.addEventListener("close", resolve));
+    await new Promise((resolve) => socket.addEventListener("close", resolve));
   }, { passive: true, once: true });
 };
 

@@ -1,16 +1,20 @@
 import { StatefulWebSocket } from "./StatefulSocket.ts";
+import { Xor } from "../obfuscation/Xor.ts";
 
 const channels: Map<number, Channel> = new Map();
 
-addEventListener("Channel::close", ((event: MessageEvent) => {
-  console.log("Channel " + event.data + " got close control message");
+addEventListener(
+  "Channel::close",
+  ((event: MessageEvent) => {
+    console.log("Channel " + event.data + " got close control message");
 
-  if (channels.has(event.data)) {
-    const channel = channels.get(event.data)!;
+    if (channels.has(event.data)) {
+      const channel = channels.get(event.data)!;
 
-    channel.dispatchEvent(new Event("close"));
-  }
-}) as EventListener)
+      channel.dispatchEvent(new Event("close"));
+    }
+  }) as EventListener,
+);
 
 export default class Channel extends EventTarget {
   private socketId: number = 0;
@@ -40,15 +44,24 @@ export default class Channel extends EventTarget {
   }
 
   public sendPacket(packet: Uint8Array) {
+    const message = Xor.apply(new Uint8Array([this.socketId, ...packet]));
+
+    console.log("Send encrypted " + String.fromCharCode(...packet));
+
     this.socket.send(
-      new Uint8Array([this.socketId, ...packet]),
+      message,
     );
   }
 
   public onPacketCallback?: (packet: Uint8Array) => void;
 
   public onPacketListener({ data }: MessageEvent) {
-    const [socketId, ...packet] = new Uint8Array(data);
+    const bytesCopy =
+      (data instanceof ArrayBuffer ? new Uint8Array(data) : data).slice();
+
+    const [socketId, ...packet] = Xor.apply(bytesCopy);
+
+    console.log(socketId, new Uint8Array(data)[0]);
 
     const buffer = new Uint8Array(packet);
 
@@ -62,17 +75,22 @@ export default class Channel extends EventTarget {
 
     const listener = this.onPacketListener.bind(this);
 
-    this.socket.addEventListener("message",
-      listener,
-      { passive: true }
-    );
+    this.socket.addEventListener("message", (event) => {
+      listener(
+        event,
+      );
+    }, {
+      passive: true,
+    });
 
     this.socket.addEventListener("close", () => {
       this.socket.removeEventListener("message", listener);
 
       channels.delete(this.socketId);
 
-      console.log("Removed message listener on global socket close " + this.socketId);
+      console.log(
+        "Removed message listener on global socket close " + this.socketId,
+      );
     }, { once: true });
 
     this.addEventListener("close", () => {
@@ -80,12 +98,14 @@ export default class Channel extends EventTarget {
 
       channels.delete(this.socketId);
 
-      console.log("Removed message listener on socket cleanup " + this.socketId);
+      console.log(
+        "Removed message listener on socket cleanup " + this.socketId,
+      );
     }, { once: true });
   }
 
   constructor(
-    private readonly socket: StatefulWebSocket
+    private readonly socket: StatefulWebSocket,
   ) {
     super();
 

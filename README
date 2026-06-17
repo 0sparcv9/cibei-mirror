@@ -1,0 +1,17 @@
+慈悲
+====
+
+HTTP server for bypassing censorship
+
+Why?
+----
+
+1. Proxy protocols (like openvpn+cloak, vless+reality+xhttp) are an overkill for most situations
+2. It's hard to get xray/sing-box working on free servers (like railway and render)
+3. A normal person doesn't deserve being carried through 7 circles of hell just to get a proxy that they'll dispose of anyway
+
+Pros
+----
+
+1. No overhead for TCP 3 way handshakes to proxy for each connection due to multiplexing
+2. Easily deployable

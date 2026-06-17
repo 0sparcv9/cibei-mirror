@@ -2,6 +2,7 @@
     mimic="https://maven.fabricmc.net"
     tunnelRegisterEndpoint="/register"
     tunnelUrl="/tunnel"
+    obfuscationSecret="pulsar_HAtes_himSELF"
     publicKey="[
       30,
       251,

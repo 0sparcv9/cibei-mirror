@@ -1,8 +1,9 @@
 import config from "./lib/config_parser.ts";
 import TCPSegmentEvent from "./lib/domain/streams/SegmentEvent.ts";
 import Channel from "./lib/domain/ws/Channel.ts";
-import {StatefulWebSocket} from "./lib/domain/ws/StatefulSocket.ts";
-import {ControlMessage} from "./lib/domain/ws/ChannelMultiplexCollapser.ts";
+import { StatefulWebSocket } from "./lib/domain/ws/StatefulSocket.ts";
+import { ControlMessage } from "./lib/domain/ws/ChannelMultiplexCollapser.ts";
+import { Xor } from "./lib/domain/obfuscation/Xor.ts";
 
 const { tunnelRegisterEndpoint, privateKey } = config.root.attributes;
 
@@ -66,15 +67,17 @@ controlChannel.onPacket((packet) => {
 
     switch (message) {
       case ControlMessage.Close: {
-        dispatchEvent(new MessageEvent("Channel::close", {
-          data: socketId
-        }));
+        dispatchEvent(
+          new MessageEvent("Channel::close", {
+            data: socketId,
+          }),
+        );
 
         break;
       }
     }
   }
-})
+});
 
 for await (const clientConn of listener) {
   const channel = new Channel(socket as StatefulWebSocket);
@@ -82,29 +85,34 @@ for await (const clientConn of listener) {
   channel.addEventListener("close", () => {
     try {
       clientConn.close();
-    } catch { 0 }
+    } catch {
+      0;
+    }
   });
 
   console.log("Create new channel", channel);
 
   TCPSegmentEvent
     .attach(clientConn.readable)
-    .addEventListener("segment", (({ data }: TCPSegmentEvent) => {
-      if (socket.readyState === WebSocket.OPEN) {
-        try {
-          console.log("Send ", data, "Socket ID " + channel.getSocketID());
+    .addEventListener(
+      "segment",
+      (({ data }: TCPSegmentEvent) => {
+        if (socket.readyState === WebSocket.OPEN) {
+          try {
+            console.log("Send ", data, "Socket ID " + channel.getSocketID());
 
-          channel.sendPacket(data);
-        } catch (error) {
-          console.error(error)
+            channel.sendPacket(data);
+          } catch (error) {
+            console.error(error);
+          }
         }
-      }
-  }) as EventListener)
+      }) as EventListener,
+    );
 
-  channel.onPacket(async packet => {
+  channel.onPacket(async (packet) => {
     try {
       await clientConn.write(packet);
-    } catch(e) {
+    } catch (e) {
       console.error(e);
     }
   });
