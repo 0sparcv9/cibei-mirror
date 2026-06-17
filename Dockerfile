@@ -7,4 +7,4 @@ RUN deno ci --prod --skip-types
 
 COPY . .
 
-CMD ["deno", "run", "--allow-net", "--allow-read", "bin\proxy.ts"]
+CMD ["deno", "run", "--allow-net", "--allow-read", "bin/proxy.ts"]
