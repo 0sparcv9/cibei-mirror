@@ -33,7 +33,7 @@ const initTunnel = (
     const result = await crypto.subtle.verify(
       "Ed25519",
       pubKey,
-      signature,
+      Buffer.from(signature),
       Buffer.from(clientAuthMsg),
     );
 
