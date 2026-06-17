@@ -7,6 +7,7 @@ import {
 import DisposableMap from "./domain/context/DisposableMap.ts";
 import ClientHelloUtils from "./domain/tls/ClientHelloUtils.ts";
 import { Xor } from "./domain/obfuscation/Xor.ts";
+import "./Logger.ts";
 
 const { publicKey } = config.root.attributes;
 

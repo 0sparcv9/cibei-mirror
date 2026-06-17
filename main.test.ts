@@ -3,7 +3,7 @@ import TCPSegmentEvent from "./lib/domain/streams/SegmentEvent.ts";
 import Channel from "./lib/domain/ws/Channel.ts";
 import { StatefulWebSocket } from "./lib/domain/ws/StatefulSocket.ts";
 import { ControlMessage } from "./lib/domain/ws/ChannelMultiplexCollapser.ts";
-import { Xor } from "./lib/domain/obfuscation/Xor.ts";
+import "./lib/Logger.ts";
 
 const { tunnelRegisterEndpoint, privateKey } = config.root.attributes;
 
