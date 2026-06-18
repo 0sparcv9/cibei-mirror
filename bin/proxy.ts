@@ -25,17 +25,15 @@ export async function handler(req: Request): Promise<Response> {
   if (clientAuthMsg) {
     const { socket, response } = Deno.upgradeWebSocket(req);
 
-    setImmediate(() => {
-      try {
-        using collapser = new ChannelMultiplexCollapser(
-          socket as StatefulWebSocket,
-        );
+    try {
+      using collapser = new ChannelMultiplexCollapser(
+        socket as StatefulWebSocket,
+      );
 
-        initSocket(collapser, socket, clientAuthMsg);
-      } catch (e) {
-        console.error(e);
-      }
-    });
+      initSocket(collapser, socket, clientAuthMsg);
+    } catch (e) {
+      console.error(e);
+    }
 
     return response;
   }

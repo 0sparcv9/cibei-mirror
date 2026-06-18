@@ -51,18 +51,20 @@ export class ChannelMultiplexCollapser extends EventTarget {
     super();
 
     const listener = ({ data }: MessageEvent) => {
-      const [socketId, ...packet] = Xor.apply(new Uint8Array(data));
+      try {
+        const [socketId, ...packet] = Xor.apply(new Uint8Array(data));
 
-      console.log(String.fromCharCode(...packet));
-
-      this.channels.forEach((channel) => {
-        if (channel?.onPacketCallback) {
-          console.log(
-            "Foudn packet callacxk",
-          );
-          channel.onPacketCallback(socketId, new Uint8Array(packet));
-        }
-      });
+        this.channels.forEach((channel) => {
+          if (channel?.onPacketCallback) {
+            console.log(
+              "Foudn packet callacxk",
+            );
+            channel.onPacketCallback(socketId, new Uint8Array(packet));
+          }
+        });
+      } catch (e) {
+        console.error(e);
+      }
     };
 
     if (!this.mainSocket) throw new Error("No main socket");

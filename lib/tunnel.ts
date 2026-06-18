@@ -25,100 +25,104 @@ const initTunnel = (
   clientAuthMsg: Uint8Array,
 ) => {
   socket.addEventListener("message", async ({ data }) => {
-    const bytesCopy =
-      (data instanceof ArrayBuffer ? new Uint8Array(data) : data).slice();
+    try {
+      const bytesCopy =
+        (data instanceof ArrayBuffer ? new Uint8Array(data) : data).slice();
 
-    const signature = Xor.apply(bytesCopy);
+      const signature = Xor.apply(bytesCopy);
 
-    const result = await crypto.subtle.verify(
-      "Ed25519",
-      pubKey,
-      Buffer.from(signature),
-      Buffer.from(clientAuthMsg),
-    );
-
-    if (!result) {
-      return socket.close();
-    }
-
-    using serverConnections = new DisposableMap<number, Deno.TcpConn>();
-
-    const flow = collapser.createSubflow();
-
-    flow.onPacket(async (socketId: number, packet: Uint8Array) => {
-      console.log("Socket id " + socketId, "packet", packet);
-
-      if (!serverConnections.has(socketId)) {
-        const serverConnectionDomain = ClientHelloUtils.exfiltrateTlsSni(
-          new Uint8Array(packet),
-        );
-
-        if (serverConnectionDomain) {
-          const serverConnection = await Deno.connect({
-            hostname: serverConnectionDomain,
-            port: 443,
-          });
-
-          serverConnections.set(
-            socketId,
-            serverConnection,
-          );
-
-          const target = TCPSegmentEvent
-            .attach(serverConnection.readable);
-
-          console.log("Connected to " + serverConnectionDomain);
-
-          target.addEventListener("close", () => {
-            console.log("Server connection closed");
-
-            serverConnections.delete(socketId);
-
-            flow.sendControlMessage(socketId, ControlMessage.Close);
-          }, { once: true });
-
-          target.addEventListener(
-            "segment",
-            (({ data }: TCPSegmentEvent) => {
-              console.log("TCP -> SOCKET");
-
-              flow.sendPacket(socketId, data);
-            }) as EventListener,
-          );
-        }
-      }
-
-      const serverConnection = serverConnections.get(
-        socketId,
+      const result = await crypto.subtle.verify(
+        "Ed25519",
+        pubKey,
+        Buffer.from(signature),
+        Buffer.from(clientAuthMsg),
       );
 
-      const text = new TextDecoder().decode(new Uint8Array(packet));
-
-      if (text.includes("CONNECT")) {
-        console.log("connect");
-        const response = "HTTP/1.1 200 Connection Established\r\n\r\n";
-
-        const encoded = new TextEncoder().encode(response);
-
-        flow.sendPacket(socketId, encoded);
-
-        return;
+      if (!result) {
+        return socket.close();
       }
 
-      if (text.includes("GET")) {
-        flow.sendControlMessage(socketId, ControlMessage.Close);
+      using serverConnections = new DisposableMap<number, Deno.TcpConn>();
 
-        return;
-      }
+      const flow = collapser.createSubflow();
 
-      if (serverConnection) {
-        return await serverConnection!.write(new Uint8Array(packet));
-      }
+      flow.onPacket(async (socketId: number, packet: Uint8Array) => {
+        console.log("Socket id " + socketId, "packet", packet);
 
-      console.warn("Unrecognized proxy protocol!!!");
-    });
+        if (!serverConnections.has(socketId)) {
+          const serverConnectionDomain = ClientHelloUtils.exfiltrateTlsSni(
+            new Uint8Array(packet),
+          );
 
-    await new Promise((resolve) => socket.addEventListener("close", resolve));
+          if (serverConnectionDomain) {
+            const serverConnection = await Deno.connect({
+              hostname: serverConnectionDomain,
+              port: 443,
+            });
+
+            serverConnections.set(
+              socketId,
+              serverConnection,
+            );
+
+            const target = TCPSegmentEvent
+              .attach(serverConnection.readable);
+
+            console.log("Connected to " + serverConnectionDomain);
+
+            target.addEventListener("close", () => {
+              console.log("Server connection closed");
+
+              serverConnections.delete(socketId);
+
+              flow.sendControlMessage(socketId, ControlMessage.Close);
+            }, { once: true });
+
+            target.addEventListener(
+              "segment",
+              (({ data }: TCPSegmentEvent) => {
+                console.log("TCP -> SOCKET");
+
+                flow.sendPacket(socketId, data);
+              }) as EventListener,
+            );
+          }
+        }
+
+        const serverConnection = serverConnections.get(
+          socketId,
+        );
+
+        const text = new TextDecoder().decode(new Uint8Array(packet));
+
+        if (text.includes("CONNECT")) {
+          console.log("connect");
+          const response = "HTTP/1.1 200 Connection Established\r\n\r\n";
+
+          const encoded = new TextEncoder().encode(response);
+
+          flow.sendPacket(socketId, encoded);
+
+          return;
+        }
+
+        if (text.includes("GET")) {
+          flow.sendControlMessage(socketId, ControlMessage.Close);
+
+          return;
+        }
+
+        if (serverConnection) {
+          return await serverConnection!.write(new Uint8Array(packet));
+        }
+
+        console.warn("Unrecognized proxy protocol!!!");
+      });
+
+      await new Promise((resolve) => socket.addEventListener("close", resolve));
+    } catch (e) {
+      console.error(e);
+    }
   }, { passive: true, once: true });
 };
 
