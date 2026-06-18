@@ -1,4 +1,4 @@
-const DEBUG = false;
+const DEBUG = true;
 
 console.log = new Proxy(console.log, {
   apply(target, that, args) {

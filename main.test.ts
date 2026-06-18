@@ -3,15 +3,15 @@ import TCPSegmentEvent from "./lib/domain/streams/SegmentEvent.ts";
 import Channel from "./lib/domain/ws/Channel.ts";
 import { StatefulWebSocket } from "./lib/domain/ws/StatefulSocket.ts";
 import { ControlMessage } from "./lib/domain/ws/ChannelMultiplexCollapser.ts";
-import "./lib/Logger.ts";
 
-const { tunnelRegisterEndpoint, privateKey } = config.root.attributes;
+const { tunnelRegisterEndpoint, privateKey, serverUrl } =
+  config.root.attributes;
 
 /**
  * Register a designated TCP tunnel
  */
 
-const req = await fetch(`http://127.0.0.1:8000${tunnelRegisterEndpoint}`);
+const req = await fetch(`${serverUrl}${tunnelRegisterEndpoint}`);
 
 const resp = await req.json();
 
@@ -34,7 +34,7 @@ const msg = Array.from(
 );
 
 const getTunnelSocket = async () => {
-  const tunnelUrl = `ws://127.0.0.1:8000${resp.url}`;
+  const tunnelUrl = `${serverUrl}${resp.url}`;
 
   console.log(`Connecting to ${tunnelUrl} with message`, msg);
 

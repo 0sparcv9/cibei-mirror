@@ -16,12 +16,20 @@ export class SingleDestinationChannel {
   }
 
   public sendPacket(socketId: number, packet: Uint8Array) {
-    this.controller.mainSocket!.send(
+    if (!this?.controller?.mainSocket) {
+      return;
+    }
+
+    this.controller.mainSocket.send(
       Xor.apply(new Uint8Array([socketId, ...packet])),
     );
   }
 
   public sendControlMessage(socketId: number, message: ControlMessage) {
+    if (!this?.controller?.mainSocket) {
+      return;
+    }
+
     console.log("Sending control Message " + message + " to " + socketId);
 
     this.controller.mainSocket!.send(
@@ -38,7 +46,7 @@ export class ChannelMultiplexCollapser extends EventTarget {
   private readonly channels: SingleDestinationChannel[] = [];
 
   constructor(
-    public mainSocket?: StatefulWebSocket,
+    public mainSocket: StatefulWebSocket,
   ) {
     super();
 
@@ -64,9 +72,7 @@ export class ChannelMultiplexCollapser extends EventTarget {
     this.mainSocket.addEventListener("close", () => {
       this.channels.length = 0;
 
-      this.mainSocket!.removeEventListener("message", listener);
-
-      delete this.mainSocket;
+      this.mainSocket.removeEventListener("message", listener);
 
       console.log("Clearing ChannelMultiplexCollapser");
     }, { once: true });

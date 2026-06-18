@@ -1,8 +1,8 @@
 import config from "../lib/config_parser.ts";
 import clients from "../lib/registration_manager.ts";
 import initSocket from "../lib/tunnel.ts";
-import {ChannelMultiplexCollapser} from "../lib/domain/ws/ChannelMultiplexCollapser.ts";
-import {StatefulWebSocket} from "../lib/domain/ws/StatefulSocket.ts";
+import { ChannelMultiplexCollapser } from "../lib/domain/ws/ChannelMultiplexCollapser.ts";
+import { StatefulWebSocket } from "../lib/domain/ws/StatefulSocket.ts";
 
 const { mimic, tunnelRegisterEndpoint, tunnelUrl } = config.root.attributes;
 
@@ -26,13 +26,13 @@ export async function handler(req: Request): Promise<Response> {
     const { socket, response } = Deno.upgradeWebSocket(req);
 
     setImmediate(() => {
-      using collapser = new ChannelMultiplexCollapser(
-        socket as StatefulWebSocket
-      );
-
       try {
+        using collapser = new ChannelMultiplexCollapser(
+          socket as StatefulWebSocket,
+        );
+
         initSocket(collapser, socket, clientAuthMsg);
-      } catch(e) {
+      } catch (e) {
         console.error(e);
       }
     });
